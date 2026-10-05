@@ -112,3 +112,29 @@ Comandos siempre vía Docker (`make migrate`; pytest con `docker-compose exec ap
 - Apps móviles (Android/iOS).
 - Autenticación real y FK a una tabla de usuarios.
 - Reseñas con texto, moderación y ordenamiento por rating.
+
+## Anexo: ¿Cómo funciona un LLM?
+
+Un **LLM** (*Large Language Model*) es una red neuronal entrenada con enormes cantidades de texto para **predecir el siguiente token** (fragmento de palabra) dado todo el texto anterior. Para generar una respuesta repite ese paso en bucle: predice un token, lo añade al contexto y vuelve a predecir.
+
+### Ejemplo corto
+
+Prompt: `Este curso tiene 5 estrellas, es muy`
+
+1. **Tokenización:** el texto se divide en tokens → `Este`, ` curso`, ` tiene`, ` 5`, ` estrellas`, `,`, ` es`, ` muy`.
+2. **Predicción:** el modelo asigna una probabilidad a cada token posible como continuación:
+
+   | Token candidato | Probabilidad |
+   |---|---|
+   | ` bueno` | 41 % |
+   | ` recomendable` | 27 % |
+   | ` completo` | 14 % |
+   | ` malo` | 1 % |
+   | … | … |
+
+3. **Muestreo:** se elige un token (el más probable o uno al azar según la *temperatura*), por ejemplo ` bueno`.
+4. **Bucle:** el contexto pasa a ser `…es muy bueno` y se predice el siguiente token, hasta emitir un token de fin.
+
+Resultado: `Este curso tiene 5 estrellas, es muy bueno y recomendable.`
+
+El modelo no "busca" la respuesta en una base de datos: la **calcula** token a token a partir de patrones aprendidos. Por eso `malo` tiene una probabilidad baja: en los datos de entrenamiento, "5 estrellas" casi siempre aparece junto a opiniones positivas.
