@@ -30,30 +30,30 @@
 
 ---
 
-## Fase 1 — Unicidad real (B1, prioridad alta)
+## Fase 1 — Unicidad real (B1, prioridad alta) — ✅ Completada
 
 **Objetivo**: garantizar a nivel DB un solo rating activo por `(course_id, user_id)` y manejar la race condition en el servicio.
 
 **Pasos**
-1. `app/models/course_rating.py`: declarar el índice único parcial sobre `(course_id, user_id)` con condición `deleted_at IS NULL`, y corregir el docstring.
-2. Crear la migración con `make create-migration`. Revisar el autogenerate a mano, porque Alembic no siempre detecta bien los índices parciales. `down_revision = '0e3a8766f785'`.
-   - `upgrade()`: primero resolver duplicados activos. Se conserva el más reciente por `(course_id, user_id)` y los demás reciben soft delete. Después se crea el índice parcial.
-   - Eliminar en la misma migración la constraint `uq_course_ratings_user_course_deleted`, que no sirve.
-   - `downgrade()`: restaurar la constraint vieja y eliminar el índice. Los duplicados con soft delete no se reconstruyen (documentarlo en el docstring).
-3. `CourseService.add_course_rating`: capturar `IntegrityError` en el INSERT, hacer `rollback()`, releer el rating activo y actualizarlo (upsert idempotente).
-4. Tests en `app/tests/test_rating_db_constraints.py`:
-   - Quitar el `skip`. El segundo insert activo debe lanzar `IntegrityError`.
-   - Tras un soft delete se permite un rating nuevo.
-   - Conviven dos soft-deleted y un activo.
-   - Test de servicio con DB real: dos `add_course_rating` seguidos del mismo usuario dejan una sola fila activa.
+- [x] 1. `app/models/course_rating.py`: declarar el índice único parcial sobre `(course_id, user_id)` con condición `deleted_at IS NULL`, y corregir el docstring.
+- [x] 2. Crear la migración con `make create-migration`. Revisar el autogenerate a mano, porque Alembic no siempre detecta bien los índices parciales. `down_revision = '0e3a8766f785'`.
+   - [x] `upgrade()`: primero resolver duplicados activos. Se conserva el más reciente por `(course_id, user_id)` y los demás reciben soft delete. Después se crea el índice parcial.
+   - [x] Eliminar en la misma migración la constraint `uq_course_ratings_user_course_deleted`, que no sirve.
+   - [x] `downgrade()`: restaurar la constraint vieja y eliminar el índice. Los duplicados con soft delete no se reconstruyen (documentarlo en el docstring).
+- [x] 3. `CourseService.add_course_rating`: capturar `IntegrityError` en el INSERT, hacer `rollback()`, releer el rating activo y actualizarlo (upsert idempotente).
+- [x] 4. Tests en `app/tests/test_rating_db_constraints.py`:
+   - [x] Quitar el `skip`. El segundo insert activo debe lanzar `IntegrityError`.
+   - [x] Tras un soft delete se permite un rating nuevo.
+   - [x] Conviven dos soft-deleted y un activo.
+   - [x] Test de servicio con DB real: dos `add_course_rating` seguidos del mismo usuario dejan una sola fila activa.
 
 **Verificación**
-- `make migrate` y luego `alembic current` dentro del contenedor.
-- `pytest app/tests/test_rating_db_constraints.py -v` dentro del contenedor.
-- Probar `alembic downgrade -1` seguido de `alembic upgrade head`.
-- Opcional: sembrar duplicados activos con `psql` en el contenedor `db` antes de migrar.
+- [x] `make migrate` y luego `alembic current` dentro del contenedor.
+- [x] `pytest app/tests/test_rating_db_constraints.py -v` dentro del contenedor.
+- [x] Probar `alembic downgrade -1` seguido de `alembic upgrade head`.
+- [x] Opcional: sembrar duplicados activos con `psql` en el contenedor `db` antes de migrar.
 
-**Aceptación**: `\d course_ratings` muestra el índice parcial. El test de duplicado activo pasa sin skip. Upgrade, downgrade y upgrade funcionan. Con duplicados previos, la migración no falla y deja uno activo por par.
+**Aceptación** (cumplida): `\d course_ratings` muestra el índice parcial. El test de duplicado activo pasa sin skip. Upgrade, downgrade y upgrade funcionan. Con duplicados previos, la migración no falla y deja uno activo por par.
 
 **Riesgos**
 - El autogenerate puede omitir o malinterpretar la condición parcial.

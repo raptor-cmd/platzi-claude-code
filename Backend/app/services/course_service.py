@@ -2,6 +2,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_
+from sqlalchemy.exc import IntegrityError
 from app.models.course import Course
 from app.models.lesson import Lesson
 from app.models.teacher import Teacher
@@ -195,24 +196,48 @@ class CourseService:
         )
 
         if existing_rating:
-            # ACTUALIZAR rating existente
-            existing_rating.rating = rating
-            existing_rating.updated_at = datetime.utcnow()
-            self.db.flush()
+            return self._update_existing_rating(existing_rating, rating)
+
+        # CREAR nuevo rating
+        new_rating = CourseRating(
+            course_id=course_id,
+            user_id=user_id,
+            rating=rating
+        )
+        self.db.add(new_rating)
+        try:
             self.db.commit()
-            self.db.refresh(existing_rating)
-            return existing_rating.to_dict()
-        else:
-            # CREAR nuevo rating
-            new_rating = CourseRating(
-                course_id=course_id,
-                user_id=user_id,
-                rating=rating
+        except IntegrityError:
+            # Race condition: otra transacción creó el rating activo primero
+            # (índice único parcial). Reintentar como UPDATE.
+            self.db.rollback()
+            existing_rating = (
+                self.db.query(CourseRating)
+                .filter(
+                    CourseRating.course_id == course_id,
+                    CourseRating.user_id == user_id,
+                    CourseRating.deleted_at.is_(None)
+                )
+                .first()
             )
-            self.db.add(new_rating)
-            self.db.commit()
-            self.db.refresh(new_rating)
-            return new_rating.to_dict()
+            if not existing_rating:
+                raise
+            return self._update_existing_rating(existing_rating, rating)
+        self.db.refresh(new_rating)
+        return new_rating.to_dict()
+
+    def _update_existing_rating(
+        self,
+        existing_rating: CourseRating,
+        rating: int
+    ) -> Dict[str, Any]:
+        """Update an active rating's value and return its dict."""
+        existing_rating.rating = rating
+        existing_rating.updated_at = datetime.utcnow()
+        self.db.flush()
+        self.db.commit()
+        self.db.refresh(existing_rating)
+        return existing_rating.to_dict()
 
     def update_course_rating(
         self,

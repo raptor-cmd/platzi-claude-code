@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.db.base import SessionLocal
 from app.models.course import Course
 from app.models.course_rating import CourseRating
+from app.services.course_service import CourseService
 
 
 @pytest.fixture
@@ -31,7 +32,16 @@ def sample_course(db_session):
     db_session.add(course)
     db_session.commit()
     db_session.refresh(course)
-    return course
+    course_id = course.id
+    yield course
+
+    # Cleanup: tests run against the development DB, so remove test data
+    db_session.rollback()
+    db_session.query(CourseRating).filter(
+        CourseRating.course_id == course_id
+    ).delete()
+    db_session.query(Course).filter(Course.id == course_id).delete()
+    db_session.commit()
 
 
 class TestRatingConstraints:
@@ -127,6 +137,47 @@ class TestRatingConstraints:
         db_session.refresh(rating2)
         assert rating2.id is not None
         assert rating2.rating == 3
+
+    def test_multiple_soft_deleted_and_one_active_coexist(
+        self,
+        db_session,
+        sample_course
+    ):
+        """Two soft-deleted ratings and one active rating can coexist."""
+        now = datetime.utcnow()
+        db_session.add_all([
+            CourseRating(course_id=sample_course.id, user_id=42, rating=1, deleted_at=now),
+            CourseRating(course_id=sample_course.id, user_id=42, rating=2, deleted_at=now),
+            CourseRating(course_id=sample_course.id, user_id=42, rating=5),
+        ])
+        db_session.commit()
+
+        active = db_session.query(CourseRating).filter(
+            CourseRating.course_id == sample_course.id,
+            CourseRating.user_id == 42,
+            CourseRating.deleted_at.is_(None)
+        ).count()
+        assert active == 1
+
+    def test_service_add_rating_twice_keeps_single_active_row(
+        self,
+        db_session,
+        sample_course
+    ):
+        """Two consecutive add_course_rating calls leave one active row."""
+        service = CourseService(db_session)
+
+        first = service.add_course_rating(sample_course.id, 42, 5)
+        second = service.add_course_rating(sample_course.id, 42, 3)
+
+        assert first["id"] == second["id"]
+        rows = db_session.query(CourseRating).filter(
+            CourseRating.course_id == sample_course.id,
+            CourseRating.user_id == 42,
+            CourseRating.deleted_at.is_(None)
+        ).all()
+        assert len(rows) == 1
+        assert rows[0].rating == 3
 
     def test_foreign_key_constraint(self, db_session):
         """Test foreign key constraint to courses table."""

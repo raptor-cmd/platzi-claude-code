@@ -22,7 +22,29 @@ def upgrade() -> None:
 
     UNIQUE(course_id, user_id, deleted_at) never fires while deleted_at IS NULL
     (NULL != NULL in PostgreSQL), so replace it with a partial unique index.
+
+    Before creating the index, existing duplicate active ratings are cleaned up:
+    the most recent one per (course_id, user_id) is kept and the rest are
+    soft-deleted (recoverable, since deleted_at is only set).
     """
+    op.execute(
+        """
+        UPDATE course_ratings
+        SET deleted_at = NOW()
+        WHERE id IN (
+            SELECT id FROM (
+                SELECT id,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY course_id, user_id
+                           ORDER BY updated_at DESC, id DESC
+                       ) AS rn
+                FROM course_ratings
+                WHERE deleted_at IS NULL
+            ) ranked
+            WHERE ranked.rn > 1
+        )
+        """
+    )
     op.drop_constraint(
         'uq_course_ratings_user_course_deleted',
         'course_ratings',
@@ -38,6 +60,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Restore the old (ineffective) constraint and drop the partial index.
+
+    Duplicates soft-deleted by upgrade() are NOT restored.
+    """
     op.drop_index('uq_course_ratings_active_user_course', table_name='course_ratings')
     op.create_unique_constraint(
         'uq_course_ratings_user_course_deleted',
