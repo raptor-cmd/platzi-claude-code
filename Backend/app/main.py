@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from typing import List
@@ -293,24 +293,24 @@ def get_course_rating_stats(
 
 @app.get(
     "/courses/{course_id}/ratings/user/{user_id}",
-    response_model=RatingResponse | None,
+    response_model=None,
     tags=["ratings"],
     responses={
-        200: {"description": "User's rating for the course"},
-        204: {"description": "User has not rated this course"}
+        200: {"model": RatingResponse, "description": "User's rating for the course"},
+        204: {"description": "User has not rated this course (no body)"}
     }
 )
 def get_user_course_rating(
     course_id: int,
     user_id: int,
     course_service: CourseService = Depends(get_course_service)
-) -> RatingResponse | None:
+) -> RatingResponse | Response:
     """
     Get a specific user's rating for a course.
 
     Returns:
     - Rating object if user has rated the course
-    - 204 No Content if user hasn't rated
+    - 204 No Content (empty body) if user hasn't rated
 
     Use Case:
     - Check if current user has already rated before showing rating UI
@@ -335,9 +335,7 @@ def get_user_course_rating(
     rating = course_service.get_user_course_rating(course_id, user_id)
 
     if rating is None:
-        raise HTTPException(
-            status_code=status.HTTP_204_NO_CONTENT
-        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     return RatingResponse(**rating)
 

@@ -66,23 +66,23 @@
 
 ---
 
-## Fase 2 — 204 válido (B2)
+## Fase 2 — 204 válido (B2) — ✅ Completada
 
 **Objetivo**: que `GET /courses/{course_id}/ratings/user/{user_id}` responda un 204 real, sin body, cuando no hay rating.
 
 **Pasos**
-1. En `app/main.py` (~294-342): cuando no hay rating, devolver `Response(status_code=204)` en lugar de lanzar `HTTPException`. Ajustar `response_model` y la anotación de retorno para que FastAPI no intente validar el `Response`. Mantener `responses={200, 204}` para Swagger.
-2. Tests en `app/tests/test_rating_endpoints.py`:
-   - Endurecer `test_get_user_rating_not_exists`: status 204 y `response.content == b""`.
-   - Añadir un test contra el app real, sin mock del servicio, para confirmar que no hay error de protocolo.
-3. Decisión de contrato: se mantiene el 204 (no se pasa a 404), porque el cliente web lo tratará como `null`.
-4. Avisar al agente `frontend` (F1) de que la ruta correcta es `/ratings/user/{user_id}` y que el 204 no trae body.
+- [x] 1. En `app/main.py` (~294-342): cuando no hay rating, devolver `Response(status_code=204)` en lugar de lanzar `HTTPException`. Ajustar `response_model` y la anotación de retorno para que FastAPI no intente validar el `Response`. Mantener `responses={200, 204}` para Swagger.
+- [x] 2. Tests en `app/tests/test_rating_endpoints.py`:
+   - [x] Endurecer `test_get_user_rating_not_exists`: status 204 y `response.content == b""`.
+   - [x] Añadir un test contra el app real, sin mock del servicio, para confirmar que no hay error de protocolo.
+- [x] 3. Decisión de contrato: se mantiene el 204 (no se pasa a 404), porque el cliente web lo tratará como `null`.
+- [ ] 4. Avisar al agente `frontend` (F1) de que la ruta correcta es `/ratings/user/{user_id}` y que el 204 no trae body.
 
 **Verificación**
-- `pytest app/tests/test_rating_endpoints.py -v` dentro del contenedor.
-- `curl -i http://localhost:8000/courses/1/ratings/user/99999`: 204, sin body.
+- [x] `pytest app/tests/test_rating_endpoints.py -v` dentro del contenedor.
+- [x] `curl -i http://localhost:8000/courses/1/ratings/user/99999`: 204, sin body.
 
-**Aceptación**: 204 sin body y sin warnings en `make logs`. El caso 200 con rating no cambia.
+**Aceptación** (cumplida): 204 sin body y sin warnings en `make logs`. El caso 200 con rating no cambia.
 
 **Riesgos**: si queda `response_model` activo con la anotación anterior, FastAPI puede fallar al serializar el `Response`. El cambio es observable pero compatible, porque el cliente hoy no usa bien este endpoint (ruta errónea).
 

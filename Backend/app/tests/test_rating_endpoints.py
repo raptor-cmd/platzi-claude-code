@@ -3,9 +3,13 @@ Integration tests for course rating API endpoints.
 Tests HTTP interface with mocked service layer.
 """
 import pytest
+from datetime import datetime
 from unittest.mock import Mock
 from fastapi.testclient import TestClient
+from app.db.base import SessionLocal
 from app.main import app, get_course_service
+from app.models.course import Course
+from app.models.course_rating import CourseRating
 from app.services.course_service import CourseService
 
 
@@ -205,6 +209,76 @@ class TestGetUserCourseRatingEndpoint:
 
         # Assert
         assert response.status_code == 204
+        assert response.content == b""
+
+
+@pytest.fixture
+def real_client():
+    """Test client against the real app (no mocked service, real DB)."""
+    app.dependency_overrides.clear()
+    yield TestClient(app)
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def real_course():
+    """Persist a course for real-DB endpoint tests and clean it up afterwards."""
+    session = SessionLocal()
+    course = Course(
+        name="Test Course 204",
+        description="Test Description",
+        thumbnail="https://example.com/thumb.jpg",
+        slug=f"test-course-204-{datetime.utcnow().timestamp()}"
+    )
+    session.add(course)
+    session.commit()
+    session.refresh(course)
+    course_id = course.id
+    yield course_id
+
+    session.rollback()
+    session.query(CourseRating).filter(CourseRating.course_id == course_id).delete()
+    session.query(Course).filter(Course.id == course_id).delete()
+    session.commit()
+    session.close()
+
+
+class TestGetUserCourseRatingEndpointRealApp:
+    """GET /courses/{course_id}/ratings/user/{user_id} without mocks."""
+
+    def test_204_when_user_has_not_rated(self, real_client, real_course):
+        response = real_client.get(f"/courses/{real_course}/ratings/user/99999")
+
+        assert response.status_code == 204
+        assert response.content == b""
+        assert "application/json" not in response.headers.get("content-type", "")
+
+    def test_200_when_user_has_rated(self, real_client, real_course):
+        created = real_client.post(
+            f"/courses/{real_course}/ratings",
+            json={"user_id": 42, "rating": 4}
+        )
+        assert created.status_code == 201
+
+        response = real_client.get(f"/courses/{real_course}/ratings/user/42")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["user_id"] == 42
+        assert data["rating"] == 4
+
+    def test_204_after_soft_delete(self, real_client, real_course):
+        real_client.post(
+            f"/courses/{real_course}/ratings",
+            json={"user_id": 42, "rating": 4}
+        )
+        deleted = real_client.delete(f"/courses/{real_course}/ratings/42")
+        assert deleted.status_code == 204
+
+        response = real_client.get(f"/courses/{real_course}/ratings/user/42")
+
+        assert response.status_code == 204
+        assert response.content == b""
 
 
 class TestUpdateCourseRatingEndpoint:
