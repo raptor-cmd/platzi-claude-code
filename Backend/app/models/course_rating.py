@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, CheckConstraint
+from sqlalchemy import Column, Integer, ForeignKey, CheckConstraint, Index, text
 from sqlalchemy.orm import relationship
 from .base import BaseModel
 
@@ -9,7 +9,7 @@ class CourseRating(BaseModel):
 
     Business Rules:
     - Rating must be between 1 and 5 (validated at DB and application level)
-    - One active rating per user per course (enforced by UNIQUE constraint)
+    - One active rating per user per course (enforced by partial UNIQUE index WHERE deleted_at IS NULL)
     - Supports soft deletes via deleted_at field
     - User can update their rating or delete and re-rate
 
@@ -17,6 +17,15 @@ class CourseRating(BaseModel):
     - Many ratings belong to one Course
     """
     __tablename__ = 'course_ratings'
+    __table_args__ = (
+        Index(
+            'uq_course_ratings_active_user_course',
+            'course_id',
+            'user_id',
+            unique=True,
+            postgresql_where=text('deleted_at IS NULL')
+        ),
+    )
 
     # Foreign keys
     course_id = Column(
