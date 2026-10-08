@@ -26,31 +26,40 @@ class CourseService:
             List of course dictionaries with: id, name, description, thumbnail, slug,
             average_rating, total_ratings
         """
-        courses = self.db.query(Course).filter(Course.deleted_at.is_(None)).all()
+        # Una sola query: LEFT JOIN + GROUP BY. El filtro de ratings activos va
+        # en la condición del JOIN (no en el WHERE) para conservar los cursos
+        # sin ratings.
+        rows = (
+            self.db.query(
+                Course,
+                func.avg(CourseRating.rating).label("average"),
+                func.count(CourseRating.id).label("total")
+            )
+            .outerjoin(
+                CourseRating,
+                and_(
+                    CourseRating.course_id == Course.id,
+                    CourseRating.deleted_at.is_(None)
+                )
+            )
+            .filter(Course.deleted_at.is_(None))
+            .group_by(Course.id)
+            .order_by(Course.id)
+            .all()
+        )
 
-        result = []
-        for course in courses:
-            # Obtener stats de ratings para cada curso
-            try:
-                rating_stats = self.get_course_rating_stats(course.id)
-            except ValueError:
-                # Si falla, usar valores por defecto
-                rating_stats = {
-                    "average_rating": 0.0,
-                    "total_ratings": 0
-                }
-
-            result.append({
+        return [
+            {
                 "id": course.id,
                 "name": course.name,
                 "description": course.description,
                 "thumbnail": course.thumbnail,
                 "slug": course.slug,
-                "average_rating": rating_stats["average_rating"],
-                "total_ratings": rating_stats["total_ratings"]
-            })
-
-        return result
+                "average_rating": round(float(average), 2) if average is not None else 0.0,
+                "total_ratings": total
+            }
+            for course, average, total in rows
+        ]
 
     def get_course_by_slug(self, slug: str) -> Optional[Dict[str, Any]]:
         """

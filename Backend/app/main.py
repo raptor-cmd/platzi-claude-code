@@ -165,7 +165,8 @@ def add_course_rating(
     Business Logic:
     - If user already has an active rating: UPDATE existing
     - If user has no active rating: CREATE new rating
-    - Returns HTTP 201 for new ratings
+    - Returns HTTP 201 both when creating and when updating an existing rating
+      (upsert); clients must not rely on the status code to tell them apart
 
     Request Body:
     - user_id: User ID (positive integer)

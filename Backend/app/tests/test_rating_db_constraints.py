@@ -2,6 +2,7 @@
 Database constraint tests for course_ratings table.
 Tests actual database constraints (requires test database).
 """
+import threading
 import pytest
 from datetime import datetime
 from sqlalchemy.exc import IntegrityError
@@ -192,3 +193,52 @@ class TestRatingConstraints:
         # Act & Assert
         with pytest.raises(IntegrityError, match="fk_course_ratings_course_id"):
             db_session.commit()
+
+
+class TestConcurrentRatings:
+    """Concurrent add_course_rating calls for the same (course, user)."""
+
+    def test_concurrent_add_rating_same_user_keeps_single_active_row(
+        self,
+        db_session,
+        sample_course
+    ):
+        """Two threads (one session each) race to create the same rating.
+
+        Both calls must succeed (the loser falls back to UPDATE after the
+        IntegrityError) and exactly one active row must remain.
+        """
+        course_id = sample_course.id
+        barrier = threading.Barrier(2)
+        results = {}
+        errors = []
+
+        def worker(rating_value):
+            session = SessionLocal()  # Sessions are not thread-safe: one per thread
+            try:
+                barrier.wait(timeout=10)
+                results[rating_value] = CourseService(session).add_course_rating(
+                    course_id, 77, rating_value
+                )
+            except Exception as exc:  # noqa: BLE001 - surfaced by the assertion below
+                errors.append(exc)
+            finally:
+                session.close()
+
+        threads = [threading.Thread(target=worker, args=(value,)) for value in (2, 4)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=30)
+
+        assert errors == []
+        assert len(results) == 2
+
+        db_session.expire_all()
+        rows = db_session.query(CourseRating).filter(
+            CourseRating.course_id == course_id,
+            CourseRating.user_id == 77,
+            CourseRating.deleted_at.is_(None)
+        ).all()
+        assert len(rows) == 1
+        assert rows[0].rating in (2, 4)

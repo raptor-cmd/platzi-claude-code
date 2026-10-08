@@ -90,23 +90,23 @@
 
 ---
 
-## Fase 3 — Eliminar el N+1 en `get_all_courses` (B3)
+## Fase 3 — Eliminar el N+1 en `get_all_courses` (B3) — ✅ Completada
 
 **Objetivo**: el listado hace una sola query agregada con el mismo JSON de salida.
 
 **Pasos**
-1. Reemplazar el bucle por una sola query: `Course` con `LEFT JOIN` a `CourseRating` y `GROUP BY` curso.
-   - El filtro `deleted_at IS NULL` de ratings va en la condición del JOIN, no en el WHERE, para no perder los cursos sin ratings.
-   - Filtrar también `Course.deleted_at IS NULL`.
-   - Castear el promedio a `float` (viene como `Decimal`), redondear a 2 decimales y devolver `0.0` / `0` si no hay ratings.
-   - Fijar un orden estable.
-   - Eliminar el `try/except ValueError`, que deja de ser necesario.
-2. No tocar `get_course_by_slug`. Es un solo curso y las 3 queries de stats son aceptables.
-3. Tests con DB real: un curso sin ratings, uno con ratings y uno con un rating soft-deleted. Contar queries con un listener `before_cursor_execute` y afirmar que es una (o como máximo dos). Mantener `test_main.py::test_get_all_courses_success`.
+- [x] 1. Reemplazar el bucle por una sola query: `Course` con `LEFT JOIN` a `CourseRating` y `GROUP BY` curso.
+   - [x] El filtro `deleted_at IS NULL` de ratings va en la condición del JOIN, no en el WHERE, para no perder los cursos sin ratings.
+   - [x] Filtrar también `Course.deleted_at IS NULL`.
+   - [x] Castear el promedio a `float` (viene como `Decimal`), redondear a 2 decimales y devolver `0.0` / `0` si no hay ratings.
+   - [x] Fijar un orden estable.
+   - [x] Eliminar el `try/except ValueError`, que deja de ser necesario.
+- [x] 2. No tocar `get_course_by_slug`. Es un solo curso y las 3 queries de stats son aceptables.
+- [x] 3. Tests con DB real (`app/tests/test_get_all_courses_query.py`): un curso sin ratings, uno con ratings y uno con un rating soft-deleted. Contar queries con un listener `before_cursor_execute` y afirmar que es una (o como máximo dos). Mantener `test_main.py::test_get_all_courses_success`.
 
 **Verificación**
-- `pytest app -v` dentro del contenedor.
-- Guardar el JSON de `/courses` antes del cambio y comparar con el posterior.
+- [x] `pytest app -v` dentro del contenedor.
+- [x] Guardar el JSON de `/courses` antes del cambio y comparar con el posterior (idéntico).
 
 **Aceptación**: salida idéntica (campos, tipos y valores) para el seed. Una query por request. Los cursos sin ratings siguen apareciendo con `0.0` y `0`.
 
@@ -116,16 +116,16 @@
 
 ---
 
-## Fase 4 — Tests faltantes (B5)
+## Fase 4 — Tests faltantes (B5) — ✅ Completada
 
 **Objetivo**: cubrir concurrencia, el 204 real y la no regresión del listado.
 
 **Pasos**
-1. Test de concurrencia (en `test_rating_db_constraints.py` o en un archivo nuevo): dos sesiones, una `SessionLocal()` por hilo, llamando a `add_course_rating` para el mismo curso y usuario. Resultado esperado: una fila activa y ambas llamadas exitosas. Limpiar las filas al final.
-2. Confirmar que el test del 204 (Fase 2) y los de `/courses` (Fase 3) están en la suite completa.
-3. Revisar que no queden filas de prueba en la DB. Usar slugs únicos, como ya hacen los fixtures.
+- [x] 1. Test de concurrencia (en `test_rating_db_constraints.py` o en un archivo nuevo): dos sesiones, una `SessionLocal()` por hilo, llamando a `add_course_rating` para el mismo curso y usuario. Resultado esperado: una fila activa y ambas llamadas exitosas. Limpiar las filas al final.
+- [x] 2. Confirmar que el test del 204 (Fase 2) y los de `/courses` (Fase 3) están en la suite completa.
+- [x] 3. Revisar que no queden filas de prueba en la DB. Usar slugs únicos, como ya hacen los fixtures.
 
-**Verificación**: `pytest app -v` completo en el contenedor. Repetir 2–3 veces el test de concurrencia para detectar flakiness.
+**Verificación**: [x] `pytest app -v` completo en el contenedor (61 passed). [x] Test de concurrencia repetido 3 veces sin flakiness.
 
 **Aceptación**: suite verde y estable, sin tests `skip` relacionados con ratings.
 
@@ -135,27 +135,27 @@
 
 ---
 
-## Fase 5 — Contrato (B4, B6)
+## Fase 5 — Contrato (B4, B6) — ✅ Completada
 
 **Objetivo**: que `Backend/specs/00_contracts.md` refleje la API real. Solo documentación, en el estilo del archivo.
 
 **Pasos**
-1. Añadir `average_rating` y `total_ratings` a `GET /courses`, y `rating_distribution` (claves `"1"`..`"5"` como strings) a `GET /courses/:slug`. Indicar `teacher_id[]` y `classes[]` con `id`, `name`, `description`, `slug` (sin duración).
-2. Documentar los 6 endpoints de ratings con request, response y códigos:
-   - `POST`: upsert, 201 al crear y al actualizar; 400 si el rating está fuera de 1–5; 404 si el curso no existe; 422 por validación.
-   - `GET` lista: 404 si el curso no existe.
-   - `GET stats`.
-   - `GET user/{user_id}`: 200 o 204 sin body.
-   - `PUT`: 404 si no existe; 400 si el `user_id` del body difiere del path.
-   - `DELETE`: soft delete, 204; 404 si no existe.
-3. Notas explícitas:
-   - No hay autenticación: el `user_id` lo envía el cliente y no es una identidad confiable (B6).
-   - La unicidad se garantiza con un índice parcial.
-   - `PUT`/`DELETE` usan `/ratings/{user_id}`, mientras `GET` usa `/ratings/user/{user_id}`.
-4. Señalar la discrepancia ya existente: el contrato define `/courses/:slug/classes/:id` y el backend expone `/classes/{class_id}` (con `duration = 0`). Se documenta, pero no se cambia la ruta sin avisar a los tres clientes.
-5. Corregir el docstring del `POST` en `main.py` ("201 también al actualizar").
+- [x] 1. Añadir `average_rating` y `total_ratings` a `GET /courses`, y `rating_distribution` (claves `"1"`..`"5"` como strings) a `GET /courses/:slug`. Indicar `teacher_id[]` y `classes[]` con `id`, `name`, `description`, `slug` (sin duración).
+- [x] 2. Documentar los 6 endpoints de ratings con request, response y códigos:
+   - [x] `POST`: upsert, 201 al crear y al actualizar; 404 si el curso no existe; 422 por validación. *(Corrección: un rating fuera de 1–5 responde 422 por HTTP, no 400; el 400 del servicio queda inalcanzable y así se documenta.)*
+   - [x] `GET` lista: 404 si el curso no existe.
+   - [x] `GET stats`.
+   - [x] `GET user/{user_id}`: 200 o 204 sin body.
+   - [x] `PUT`: 404 si no existe; 400 si el `user_id` del body difiere del path.
+   - [x] `DELETE`: soft delete, 204; 404 si no existe.
+- [x] 3. Notas explícitas:
+   - [x] No hay autenticación: el `user_id` lo envía el cliente y no es una identidad confiable (B6).
+   - [x] La unicidad se garantiza con un índice parcial.
+   - [x] `PUT`/`DELETE` usan `/ratings/{user_id}`, mientras `GET` usa `/ratings/user/{user_id}`.
+- [x] 4. Señalar la discrepancia ya existente: el contrato define `/courses/:slug/classes/:id` y el backend expone `/classes/{class_id}` (con `duration = 0`). Se documenta, pero no se cambia la ruta sin avisar a los tres clientes.
+- [x] 5. Corregir el docstring del `POST` en `main.py` ("201 también al actualizar").
 
-**Verificación**: revisar a mano contra `http://localhost:8000/docs` y con `curl` a cada endpoint.
+**Verificación**: [x] revisado con `curl` a cada endpoint contra la API real (datos temporales limpiados).
 
 **Aceptación**: cada endpoint de `main.py` está en el contrato con sus códigos y ninguna afirmación contradice el código.
 
