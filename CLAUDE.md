@@ -126,3 +126,7 @@ Verificar si siguen vigentes antes de asumirlos:
 7. URLs del backend hardcodeadas en los tres clientes, sin configuración por entorno (en web, solo `ratingsApi` usa env var).
 8. Móviles sin ratings; iOS no consume el detalle de curso en la UI.
 9. Sin autenticación: `user_id` de ratings es confiado desde el cliente.
+
+# Para tests
+
+Cualquier comando que necesites ejecutar para el Backend debe ser dentro del contenedor de docker API, antes de ejecutarlo certifica que esté funcionando el contenedor y revisa el archivo makefile con los comandos que existen y úsalos
