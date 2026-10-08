@@ -60,7 +60,7 @@ platzi-claude-code/
 ### Sistema de ratings (reglas de negocio)
 - Valor 1–5, validado en servicio **y** con `CheckConstraint` en DB.
 - Un rating activo por usuario y curso.
-- `user_id` lo envía el cliente: **no hay autenticación ni FK a usuarios**.
+- POST/PUT/DELETE exigen `Authorization: Bearer <JWT>` (`app/core/auth.py`, secreto `JWT_SECRET`); el usuario sale del claim `sub` y solo puede operar sobre sus propios ratings (403 si no). No hay FK a usuarios ni endpoint de login: los tokens los emite un servicio externo.
 - Las estadísticas se agregan en SQL (`get_course_rating_stats`); preferirlas a las properties Python de `Course`.
 
 ### Comandos (ejecutar desde `Backend/`)
@@ -125,7 +125,7 @@ Verificar si siguen vigentes antes de asumirlos:
 6. `get_all_courses` hace consultas de ratings por cada curso (N+1).
 7. URLs del backend hardcodeadas en los tres clientes, sin configuración por entorno (en web, solo `ratingsApi` usa env var).
 8. Móviles sin ratings; iOS no consume el detalle de curso en la UI.
-9. Sin autenticación: `user_id` de ratings es confiado desde el cliente.
+9. Falta un emisor de tokens y que web/móvil envíen el JWT: `ratingsApi` aún no manda `Authorization`, así que sus escrituras reciben 401.
 
 # Para tests
 

@@ -7,6 +7,7 @@ from datetime import datetime
 from unittest.mock import Mock
 from fastapi.testclient import TestClient
 from app.db.base import SessionLocal
+from app.core.auth import get_current_user
 from app.main import app, get_course_service
 from app.models.course import Course
 from app.models.course_rating import CourseRating
@@ -42,6 +43,7 @@ def client(mock_course_service):
         return mock_course_service
 
     app.dependency_overrides[get_course_service] = get_mock_course_service
+    app.dependency_overrides[get_current_user] = lambda: {"id": 42}
     client = TestClient(app)
     yield client
     app.dependency_overrides.clear()
@@ -216,6 +218,7 @@ class TestGetUserCourseRatingEndpoint:
 def real_client():
     """Test client against the real app (no mocked service, real DB)."""
     app.dependency_overrides.clear()
+    app.dependency_overrides[get_current_user] = lambda: {"id": 42}
     yield TestClient(app)
     app.dependency_overrides.clear()
 
