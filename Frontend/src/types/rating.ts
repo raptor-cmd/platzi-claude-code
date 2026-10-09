@@ -15,7 +15,8 @@ export interface CourseRating {
 
 // Request payload para crear/actualizar rating
 export interface RatingRequest {
-  user_id: number;
+  // Obsoleto: el backend toma el usuario del token de la sesión anónima
+  user_id?: number;
   rating: number; // 1-5
 }
 

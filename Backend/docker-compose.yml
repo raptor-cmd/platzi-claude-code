@@ -19,6 +19,8 @@ services:
       - ./specs:/app/specs
     environment:
       DATABASE_URL: postgresql://platziflix_user:platziflix_password@db:5432/platziflix_db
+      # Solo desarrollo: en producción definir un secreto propio y largo
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-change-me-in-production-0123456789}
     depends_on:
       - db
 

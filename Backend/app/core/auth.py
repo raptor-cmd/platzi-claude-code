@@ -1,14 +1,24 @@
 """
 Autenticación por JWT (Bearer) para los endpoints que modifican datos.
 
-El token lo emite un servicio de identidad externo; aquí solo se valida.
-El `sub` del token es el `user_id` (entero positivo).
+Los tokens pueden venir de un servicio de identidad externo o de una sesión
+anónima (`create_anonymous_token`); aquí se validan igual. El `sub` del token
+es el `user_id` (entero positivo).
+
+Los ids anónimos viven en un rango reservado para no chocar con usuarios reales.
 """
+import secrets
+import time
+from collections import defaultdict, deque
+
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.config import settings
+
+ANONYMOUS_ID_MIN = 1_000_000_000
+ANONYMOUS_ID_MAX = 2_000_000_000  # cabe en el Integer de 32 bits de la DB
 
 # auto_error=False para devolver 401 (y no 403) cuando falta el header
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -52,3 +62,37 @@ def get_current_user(
         raise _unauthorized("Invalid or expired token")
 
     return {"id": user_id}
+
+
+def create_anonymous_token() -> dict:
+    """Crea un usuario anónimo nuevo y devuelve su JWT firmado."""
+    if not settings.jwt_secret:
+        raise _unauthorized("Authentication is not configured")
+
+    user_id = ANONYMOUS_ID_MIN + secrets.randbelow(ANONYMOUS_ID_MAX - ANONYMOUS_ID_MIN)
+    ttl = settings.anonymous_token_ttl_seconds
+    token = jwt.encode(
+        {"sub": str(user_id), "exp": int(time.time()) + ttl, "anon": True},
+        settings.jwt_secret,
+        algorithm=settings.jwt_algorithm,
+    )
+    return {"access_token": token, "token_type": "bearer", "user_id": user_id, "expires_in": ttl}
+
+
+# Rate limit en memoria por IP (suficiente para desarrollo; no sirve con varios workers)
+_token_requests: dict[str, deque] = defaultdict(deque)
+
+
+def anonymous_rate_limit(request: Request) -> None:
+    """Dependency: limita la emisión de tokens anónimos por IP."""
+    ip = request.client.host if request.client else "unknown"
+    now = time.monotonic()
+    window = _token_requests[ip]
+    while window and now - window[0] > 60:
+        window.popleft()
+    if len(window) >= settings.anonymous_tokens_per_minute:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many anonymous sessions, try again later",
+        )
+    window.append(now)

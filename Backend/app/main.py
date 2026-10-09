@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends, status, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from typing import List
-from app.core.auth import get_current_user
+from app.core.auth import anonymous_rate_limit, create_anonymous_token, get_current_user
 from app.core.config import settings
 from app.db.base import engine, get_db
 from app.services.course_service import CourseService
@@ -41,6 +41,10 @@ app = FastAPI(
         {
             "name": "ratings",
             "description": "Course rating operations"
+        },
+        {
+            "name": "auth",
+            "description": "Anonymous sessions"
         },
         {
             "name": "health",
@@ -140,6 +144,23 @@ def get_class_by_id(class_id: int, db: Session = Depends(get_db)) -> dict:
         "video": lesson.video_url,
         "duration": 0  # TODO: agregar duración si está disponible
     }
+
+
+# ==================== AUTH ====================
+
+@app.post(
+    "/auth/anonymous",
+    tags=["auth"],
+    responses={429: {"model": ErrorResponse, "description": "Rate limit exceeded"}}
+)
+def create_anonymous_session(_: None = Depends(anonymous_rate_limit)) -> dict:
+    """
+    Create an anonymous session and return a short-lived JWT.
+
+    The returned `user_id` belongs to a reserved range and is the only identity
+    the token can act as. Limited per IP (see `anonymous_tokens_per_minute`).
+    """
+    return create_anonymous_token()
 
 
 # ==================== RATING ENDPOINTS ====================

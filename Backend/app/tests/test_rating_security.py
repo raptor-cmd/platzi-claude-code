@@ -149,3 +149,42 @@ class TestOwnRatingFlow:
         assert client.post("/courses/1/ratings", json={"rating": 5}, headers=auth).status_code == 201
         assert client.put("/courses/1/ratings/100", json={"rating": 4}, headers=auth).status_code == 200
         assert client.delete("/courses/1/ratings/100", headers=auth).status_code == 204
+
+
+class TestAnonymousSession:
+    @pytest.fixture(autouse=True)
+    def reset_rate_limit(self):
+        from app.core import auth
+        auth._token_requests.clear()
+
+    def test_issues_token_in_reserved_range(self, client):
+        from app.core.auth import ANONYMOUS_ID_MAX, ANONYMOUS_ID_MIN
+        response = client.post("/auth/anonymous")
+        assert response.status_code == 200
+        body = response.json()
+        assert ANONYMOUS_ID_MIN <= body["user_id"] < ANONYMOUS_ID_MAX
+        payload = jwt.decode(body["access_token"], SECRET, algorithms=["HS256"])
+        assert payload["sub"] == str(body["user_id"])
+
+    def test_anonymous_token_can_rate_but_only_as_itself(self, client, service):
+        body = client.post("/auth/anonymous").json()
+        headers = {"Authorization": f"Bearer {body['access_token']}"}
+
+        ok = client.post("/courses/1/ratings", json={"rating": 4}, headers=headers)
+        assert ok.status_code == 201
+        service.add_course_rating.assert_called_once_with(
+            course_id=1, user_id=body["user_id"], rating=4
+        )
+
+        other = client.put("/courses/1/ratings/42", json={"rating": 1}, headers=headers)
+        assert other.status_code == 403
+
+    def test_rate_limit_per_ip(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "anonymous_tokens_per_minute", 2)
+        assert client.post("/auth/anonymous").status_code == 200
+        assert client.post("/auth/anonymous").status_code == 200
+        assert client.post("/auth/anonymous").status_code == 429
+
+    def test_fails_closed_without_secret(self, client, monkeypatch):
+        monkeypatch.setattr(settings, "jwt_secret", "")
+        assert client.post("/auth/anonymous").status_code == 401
