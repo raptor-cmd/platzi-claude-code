@@ -4,7 +4,7 @@
 **Fecha**: 2025-10-14
 **Scope**: Backend API - Rating Endpoints
 **Severidad Máxima**: High
-**Estado**: Requiere Acción Inmediata
+**Estado**: Corregido en backend; falta emisor de tokens y cliente
 
 ---
 
@@ -16,7 +16,7 @@ Esta revisión de seguridad analiza la implementación del sistema de ratings co
 
 | # | Vulnerabilidad | Severidad | Estado | Impacto |
 |---|----------------|-----------|--------|---------|
-| 1 | Authorization Bypass en Rating Operations | **HIGH** | 🔴 Abierto | Manipulación de ratings sin autenticación |
+| 1 | Authorization Bypass en Rating Operations | **HIGH** | 🟢 Corregido en backend (pendiente: emisor de tokens y frontend) | Manipulación de ratings sin autenticación |
 
 ---
 

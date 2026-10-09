@@ -50,6 +50,7 @@ platzi-claude-code/
 | GET | `/courses` | Lista con `average_rating` y `total_ratings` |
 | GET | `/courses/{slug}` | Detalle: `teacher_id[]`, `classes[]`, rating + `rating_distribution` |
 | GET | `/classes/{class_id}` | Lee de `Lesson`; devuelve `title`, `video`, `duration` (0, TODO) |
+| POST | `/auth/anonymous` | Crea una sesión anónima y devuelve un JWT (24 h, 10/min por IP) |
 | POST | `/courses/{course_id}/ratings` | Crea o actualiza (upsert), 201 |
 | GET | `/courses/{course_id}/ratings` | Ratings activos, más nuevos primero |
 | GET | `/courses/{course_id}/ratings/stats` | Promedio, total, distribución 1-5 |
@@ -60,7 +61,7 @@ platzi-claude-code/
 ### Sistema de ratings (reglas de negocio)
 - Valor 1–5, validado en servicio **y** con `CheckConstraint` en DB.
 - Un rating activo por usuario y curso.
-- `user_id` lo envía el cliente: **no hay autenticación ni FK a usuarios**.
+- POST/PUT/DELETE exigen `Authorization: Bearer <JWT>` (`app/core/auth.py`, secreto `JWT_SECRET`); el usuario sale del claim `sub` y solo puede operar sobre sus propios ratings (403 si no). No hay FK a usuarios ni login real: el token sale de `POST /auth/anonymous` (sesión anónima, ids en el rango reservado 1.000.000.000–2.000.000.000, `JWT_SECRET` en `docker-compose.yml` solo para desarrollo). No impide que alguien pida muchos tokens: solo limita por IP.
 - Las estadísticas se agregan en SQL (`get_course_rating_stats`); preferirlas a las properties Python de `Course`.
 
 ### Comandos (ejecutar desde `Backend/`)
@@ -86,7 +87,7 @@ Usuario `platziflix_user`, password `platziflix_password`, DB `platziflix_db`, p
 - **Stack**: Next.js 15.3.3 (App Router, Turbopack en dev), React 19, TypeScript, SCSS + CSS Modules, Vitest + React Testing Library. Gestor: **yarn**.
 - **Rutas** (`src/app/`): `/` catálogo en grid · `/course/[slug]` detalle (con `loading`, `error`, `not-found`) · `/classes/[class_id]` reproductor.
 - **Componentes** (`src/components/`): `Course`, `CourseDetail`, `StarRating`, `VideoPlayer` (cada uno con su test y `.module.scss`).
-- **Datos**: Server Components con `fetch(url, { cache: "no-store" })`. `src/services/ratingsApi.ts` es el cliente tipado de ratings (timeout, `ApiError`) y usa `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`). Tipos en `src/types/` (`index.ts`, `rating.ts`). Estilos globales en `src/styles/` (`reset.scss`, `vars.scss`).
+- **Datos**: Server Components con `fetch(url, { cache: "no-store" })`. `src/services/ratingsApi.ts` es el cliente tipado de ratings (timeout, `ApiError`, sesión anónima en localStorage con renovación ante 401) y usa `NEXT_PUBLIC_API_URL` (default `http://localhost:8000`). Tipos en `src/types/` (`index.ts`, `rating.ts`). Estilos globales en `src/styles/` (`reset.scss`, `vars.scss`).
 - En Next 15, `params` es una `Promise` en páginas: hacer `await params`.
 
 ```bash
@@ -125,7 +126,7 @@ Verificar si siguen vigentes antes de asumirlos:
 6. `get_all_courses` hace consultas de ratings por cada curso (N+1).
 7. URLs del backend hardcodeadas en los tres clientes, sin configuración por entorno (en web, solo `ratingsApi` usa env var).
 8. Móviles sin ratings; iOS no consume el detalle de curso en la UI.
-9. Sin autenticación: `user_id` de ratings es confiado desde el cliente.
+9. Autenticación solo anónima (sin login real; rate limit en memoria por IP). La web ya manda el JWT desde `ratingsApi`; móvil aún no usa ratings.
 
 # Para tests
 

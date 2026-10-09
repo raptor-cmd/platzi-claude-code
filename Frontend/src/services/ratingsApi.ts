@@ -79,6 +79,90 @@ async function handleApiResponse<T>(response: Response): Promise<T> {
   return data as T;
 }
 
+// ==================== Sesión anónima ====================
+
+const SESSION_KEY = 'platziflix_anon_session';
+
+interface AnonymousSession {
+  access_token: string;
+  user_id: number;
+  expires_at: number; // epoch ms
+}
+
+function readSession(): AnonymousSession | null {
+  try {
+    const raw = window.localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const session = JSON.parse(raw) as AnonymousSession;
+    // Descartar si le queda menos de 1 minuto de vida
+    return session.expires_at - Date.now() > 60_000 ? session : null;
+  } catch {
+    return null;
+  }
+}
+
+async function createSession(): Promise<AnonymousSession> {
+  const response = await fetchWithTimeout(`${API_BASE_URL}/auth/anonymous`, {
+    method: 'POST',
+  });
+  const data = await handleApiResponse<{
+    access_token: string;
+    user_id: number;
+    expires_in: number;
+  }>(response);
+
+  const session: AnonymousSession = {
+    access_token: data.access_token,
+    user_id: data.user_id,
+    expires_at: Date.now() + data.expires_in * 1000,
+  };
+  try {
+    window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  } catch {
+    // Sin localStorage la sesión dura solo esta llamada
+  }
+  return session;
+}
+
+/**
+ * Devuelve la sesión anónima vigente o crea una nueva.
+ * Solo funciona en el navegador (usa localStorage).
+ */
+async function getSession(forceNew = false): Promise<AnonymousSession> {
+  if (!forceNew) {
+    const existing = readSession();
+    if (existing) return existing;
+  }
+  return createSession();
+}
+
+/** user_id de la sesión actual, o null si aún no hay sesión. */
+function getCurrentUserId(): number | null {
+  return typeof window === 'undefined' ? null : readSession()?.user_id ?? null;
+}
+
+/**
+ * Fetch autenticado con el token de la sesión anónima.
+ * Si el backend responde 401 (token vencido), renueva la sesión y reintenta una vez.
+ */
+async function authFetch(
+  buildUrl: (userId: number) => string,
+  options: FetchOptions = {}
+): Promise<Response> {
+  const send = async (session: AnonymousSession) =>
+    fetchWithTimeout(buildUrl(session.user_id), {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+    });
+
+  const response = await send(await getSession());
+  if (response.status !== 401) return response;
+  return send(await getSession(true));
+}
+
 /**
  * GET /courses/{course_id}/ratings/stats
  * Obtiene las estadísticas de ratings de un curso
@@ -168,54 +252,42 @@ async function createRating(
   courseId: number,
   request: RatingRequest
 ): Promise<CourseRating> {
-  const url = `${API_BASE_URL}/courses/${courseId}/ratings`;
-
-  const response = await fetchWithTimeout(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(request),
-  });
+  // El user_id lo define el token; no se envía en el body
+  const { rating } = request;
+  const response = await authFetch(
+    () => `${API_BASE_URL}/courses/${courseId}/ratings`,
+    { method: 'POST', body: JSON.stringify({ rating }) }
+  );
 
   return await handleApiResponse<CourseRating>(response);
 }
 
 /**
  * PUT /courses/{course_id}/ratings/{user_id}
- * Actualiza el rating existente de un usuario
+ * Actualiza el rating existente de la sesión actual
  */
 async function updateRating(
   courseId: number,
-  userId: number,
   request: RatingRequest
 ): Promise<CourseRating> {
-  const url = `${API_BASE_URL}/courses/${courseId}/ratings/${userId}`;
-
-  const response = await fetchWithTimeout(url, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(request),
-  });
+  const { rating } = request;
+  const response = await authFetch(
+    (userId) => `${API_BASE_URL}/courses/${courseId}/ratings/${userId}`,
+    { method: 'PUT', body: JSON.stringify({ rating }) }
+  );
 
   return await handleApiResponse<CourseRating>(response);
 }
 
 /**
  * DELETE /courses/{course_id}/ratings/{user_id}
- * Elimina el rating de un usuario
+ * Elimina el rating de la sesión actual
  */
-async function deleteRating(courseId: number, userId: number): Promise<void> {
-  const url = `${API_BASE_URL}/courses/${courseId}/ratings/${userId}`;
-
-  const response = await fetchWithTimeout(url, {
-    method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
+async function deleteRating(courseId: number): Promise<void> {
+  const response = await authFetch(
+    (userId) => `${API_BASE_URL}/courses/${courseId}/ratings/${userId}`,
+    { method: 'DELETE' }
+  );
 
   // 204 No Content es exitoso
   if (response.status !== 204 && !response.ok) {
@@ -228,6 +300,7 @@ export const ratingsApi = {
   getRatingStats,
   getCourseRatings,
   getUserRating,
+  getCurrentUserId,
   createRating,
   updateRating,
   deleteRating,

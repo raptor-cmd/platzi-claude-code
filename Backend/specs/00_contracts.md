@@ -153,6 +153,7 @@ Notas generales:
 - Un solo rating **activo** por `(course_id, user_id)`, garantizado en base de datos por un índice único parcial (`WHERE deleted_at IS NULL`). Los ratings eliminados (soft delete) no cuentan y pueden convivir varios.
 - Rating válido: entero de 1 a 5.
 - Los errores de negocio responden `{"detail": "<mensaje>"}`. Los errores de validación de FastAPI (422) usan su formato estándar.
+- **Autenticación**: `POST`, `PUT` y `DELETE` de ratings requieren `Authorization: Bearer <JWT>` (HS256, claims `sub` = user_id y `exp`; secreto en `JWT_SECRET`). El token se obtiene con `POST /auth/anonymous` → `{access_token, token_type, user_id, expires_in}` (ids anónimos en 1.000.000.000–2.000.000.000; 429 si se excede el límite por IP). Sin token o inválido → 401; `user_id` distinto al del token → 403. El `user_id` del body es opcional/obsoleto. Los `GET` siguen públicos.
 - Ojo con las rutas: `GET` usa `/ratings/user/{user_id}`, mientras que `PUT` y `DELETE` usan `/ratings/{user_id}`.
 
 Objeto rating (`RatingResponse`):

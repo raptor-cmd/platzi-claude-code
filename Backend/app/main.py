@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Depends, status, Response
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from typing import List
+from app.core.auth import anonymous_rate_limit, create_anonymous_token, get_current_user
 from app.core.config import settings
 from app.db.base import engine, get_db
 from app.services.course_service import CourseService
@@ -40,6 +41,10 @@ app = FastAPI(
         {
             "name": "ratings",
             "description": "Course rating operations"
+        },
+        {
+            "name": "auth",
+            "description": "Anonymous sessions"
         },
         {
             "name": "health",
@@ -141,6 +146,23 @@ def get_class_by_id(class_id: int, db: Session = Depends(get_db)) -> dict:
     }
 
 
+# ==================== AUTH ====================
+
+@app.post(
+    "/auth/anonymous",
+    tags=["auth"],
+    responses={429: {"model": ErrorResponse, "description": "Rate limit exceeded"}}
+)
+def create_anonymous_session(_: None = Depends(anonymous_rate_limit)) -> dict:
+    """
+    Create an anonymous session and return a short-lived JWT.
+
+    The returned `user_id` belongs to a reserved range and is the only identity
+    the token can act as. Limited per IP (see `anonymous_tokens_per_minute`).
+    """
+    return create_anonymous_token()
+
+
 # ==================== RATING ENDPOINTS ====================
 
 @app.post(
@@ -157,6 +179,7 @@ def get_class_by_id(class_id: int, db: Session = Depends(get_db)) -> dict:
 def add_course_rating(
     course_id: int,
     rating_data: RatingRequest,
+    current_user: dict = Depends(get_current_user),
     course_service: CourseService = Depends(get_course_service)
 ) -> RatingResponse:
     """
@@ -168,21 +191,30 @@ def add_course_rating(
     - Returns HTTP 201 both when creating and when updating an existing rating
       (upsert); clients must not rely on the status code to tell them apart
 
+    Security:
+    - Requires `Authorization: Bearer <JWT>`; the user is taken from the token
+    - A body `user_id` different from the token's user is rejected with 403
+
     Request Body:
-    - user_id: User ID (positive integer)
     - rating: Rating value (1-5)
+    - user_id: Optional/deprecated; must match the authenticated user if sent
 
     Example:
         POST /courses/1/ratings
         {
-            "user_id": 42,
             "rating": 5
         }
     """
+    if rating_data.user_id is not None and rating_data.user_id != current_user["id"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot create rating for another user"
+        )
+
     try:
         result = course_service.add_course_rating(
             course_id=course_id,
-            user_id=rating_data.user_id,
+            user_id=current_user["id"],
             rating=rating_data.rating
         )
         return RatingResponse(**result)
@@ -355,6 +387,7 @@ def update_course_rating(
     course_id: int,
     user_id: int,
     rating_data: RatingRequest,
+    current_user: dict = Depends(get_current_user),
     course_service: CourseService = Depends(get_course_service)
 ) -> RatingResponse:
     """
@@ -363,19 +396,28 @@ def update_course_rating(
     Semantics: PUT = Update existing resource
     Fails with 404 if rating doesn't exist (use POST to create).
 
+    Security:
+    - Requires `Authorization: Bearer <JWT>`
+    - The path `user_id` must be the authenticated user (403 otherwise)
+
     Request Body:
-    - user_id: Must match path parameter (validation)
     - rating: New rating value (1-5)
+    - user_id: Optional; must match the path parameter if sent
 
     Example:
         PUT /courses/1/ratings/42
         {
-            "user_id": 42,
             "rating": 3
         }
     """
-    # Validar que user_id del body coincide con user_id del path
-    if rating_data.user_id != user_id:
+    if user_id != current_user["id"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot update another user's rating"
+        )
+
+    # Validar que user_id del body (si viene) coincide con user_id del path
+    if rating_data.user_id is not None and rating_data.user_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="user_id in body must match user_id in path"
@@ -407,10 +449,15 @@ def update_course_rating(
 def delete_course_rating(
     course_id: int,
     user_id: int,
+    current_user: dict = Depends(get_current_user),
     course_service: CourseService = Depends(get_course_service)
 ) -> None:
     """
     Delete (soft delete) a course rating.
+
+    Security:
+    - Requires `Authorization: Bearer <JWT>`
+    - The path `user_id` must be the authenticated user (403 otherwise)
 
     Sets deleted_at timestamp, preserving data for historical analysis.
     Returns HTTP 204 No Content on success.
@@ -422,6 +469,12 @@ def delete_course_rating(
         Response:
         HTTP 204 No Content
     """
+    if user_id != current_user["id"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot delete another user's rating"
+        )
+
     success = course_service.delete_course_rating(course_id, user_id)
 
     if not success:

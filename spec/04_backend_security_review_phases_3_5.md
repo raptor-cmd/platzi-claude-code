@@ -40,5 +40,5 @@
 
 ## Siguientes pasos
 
-- [ ] Resolver la autenticación según `spec/03_backend_security_review.md`. Es el único riesgo de seguridad abierto del sistema de ratings.
+- [x] (Backend) Autenticación JWT y autorización por propietario en POST/PUT/DELETE de ratings, según `spec/03_backend_security_review.md`. Es el único riesgo de seguridad abierto del sistema de ratings.
 - [ ] Repetir esta revisión con un diff real (por ejemplo `git diff` o un PR) antes de mergear. El análisis de hoy no pudo apoyarse en un diff.

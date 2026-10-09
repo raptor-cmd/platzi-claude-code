@@ -3,7 +3,7 @@ Pydantic schemas for course rating requests and responses.
 Provides validation and serialization for API endpoints.
 """
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Dict
+from typing import Dict, Optional
 
 
 class RatingRequest(BaseModel):
@@ -11,13 +11,14 @@ class RatingRequest(BaseModel):
     Schema for creating or updating a course rating.
 
     Validation:
-    - user_id must be positive integer
+    - user_id is optional and deprecated: the authenticated user comes from the
+      JWT. If sent, it must match the authenticated user (403 otherwise)
     - rating must be between 1 and 5 (inclusive)
     """
-    user_id: int = Field(
-        ...,
+    user_id: Optional[int] = Field(
+        default=None,
         gt=0,
-        description="ID of the user submitting the rating"
+        description="Deprecated. Ignored unless it matches the authenticated user"
     )
     rating: int = Field(
         ...,
